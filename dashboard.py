@@ -33,16 +33,18 @@ st.sidebar.header("🔍 Sélection client")
 # ————————————————— Data Loading (Parquet S3) —————————————————————————————————
 @st.cache_data(show_spinner=False)
 def load_data():
-    # on récupère le nom du bucket depuis les Secrets (TOML)
-    bucket = st.secrets["S3_BUCKET"]
-    base   = f"s3://{bucket}"
+    # on récupère le nom du bucket depuis vos Secrets
+    bucket_name = st.secrets["S3_BUCKET"]
+    base = f"s3://{bucket_name}"
 
-    # lecture Parquet depuis S3
-    clients   = pd.read_parquet(f"{base}/clients.parquet")
-    commandes = pd.read_parquet(f"{base}/commandes.parquet")
-    produits  = pd.read_parquet(f"{base}/produits_montures.parquet")
+    try:
+        clients   = pd.read_parquet(f"{base}/clients.parquet")
+        commandes = pd.read_parquet(f"{base}/commandes.parquet")
+        produits  = pd.read_parquet(f"{base}/produits_montures.parquet")
+    except Exception as e:
+        st.error(f"❌ Impossible d’accéder au bucket S3 « {bucket_name} » : {e}")
+        st.stop()
 
-    # conversion date
     commandes['Date_Commande'] = pd.to_datetime(
         commandes['Date_Commande'], errors='coerce'
     )
