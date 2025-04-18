@@ -18,11 +18,35 @@ st.set_page_config(
 )
 
 # ————————————————— Sidebar with centered logo & client search ——————————————————
-logo = Image.open("logo.png")
-st.sidebar.image(logo, width=150)
+st.sidebar.markdown(
+    """
+    <div style="display:flex; justify-content:center; margin:16px 0;">
+      <img src="logo.png" width="150" alt="Optim'eyes logo" />
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
+# On ne lit plus de CSV locaux, on utilisera load_data() ci‑dessous
 st.sidebar.header("🔍 Sélection client")
-clients = pd.read_csv("clients_clean.csv")
+
+# ————————————————— Data Loading (Parquet S3) —————————————————————————————————
+@st.cache_data(show_spinner=False)
+def load_data():
+    bucket = "s3://optim-eyes-data"
+    clients   = pd.read_parquet(f"{bucket}/clients.parquet")
+    commandes = pd.read_parquet(f"{bucket}/commandes.parquet")
+    produits  = pd.read_parquet(f"{bucket}/produits_montures.parquet")
+
+    # conversion dates
+    commandes['Date_Commande'] = pd.to_datetime(
+        commandes['Date_Commande'], errors='coerce'
+    )
+    return clients, commandes, produits
+
+clients, commandes, produits = load_data()
+
+# Sidebar : filtre sur le DataFrame chargé
 q = st.sidebar.text_input("ID ou Nom")
 if q:
     filt = clients[
@@ -31,9 +55,11 @@ if q:
     ]
 else:
     filt = clients.copy()
+
 if filt.empty:
     st.sidebar.warning("Aucun client trouvé")
     st.stop()
+
 client_id = st.sidebar.selectbox("Client_ID", filt["Client_ID"].unique())
 
 # ————————————————— Main page title (white & centered) ——————————————————————
@@ -41,7 +67,7 @@ st.markdown(
     """
     <div style='text-align:center; margin:24px 0;'>
       <span style='font-size:2.5rem; color:#FFFFFF; font-weight:700;'>
-        Dashboard de Recommandation — Optim'eyes
+        📊 Dashboard de Recommandation — Optim'eyes
       </span>
     </div>
     """,
@@ -86,20 +112,11 @@ def forecast_sales(mid, commandes, periods=1):
     model = LinearRegression().fit(X, ts.values)
     future_X = np.arange(len(ts), len(ts)+periods).reshape(-1,1)
     preds = model.predict(future_X)
-    future_idx = pd.date_range(ts.index[-1] + pd.offsets.MonthBegin(),
-                               periods=periods, freq='M')
+    future_idx = pd.date_range(
+        ts.index[-1] + pd.offsets.MonthBegin(),
+        periods=periods, freq='M'
+    )
     return pd.concat([ts, pd.Series(preds, index=future_idx, name='sales')])
-
-# ————————————————— Data Loading ——————————————————————————————————————————
-@st.cache_data
-def load_data():
-    clients_df   = pd.read_csv("clients_clean.csv")
-    commandes_df = pd.read_csv("commandes_clean.csv")
-    produits_df  = pd.read_csv("produits_montures_clean.csv")
-    commandes_df['Date_Commande'] = pd.to_datetime(commandes_df['Date_Commande'], errors='coerce')
-    return clients_df, commandes_df, produits_df
-
-clients, commandes, produits = load_data()
 
 # ————————————————— KPI calculation —————————————————————————————————————————
 num_clients   = clients["Client_ID"].nunique()
@@ -118,8 +135,7 @@ primary = [
     ("🕶️", num_montures,  "Modèles montures"),
     ("📦", num_commandes, "Commandes totales")
 ]
-cols = st.columns(3)
-for (icon, val, lbl), col in zip(primary, cols):
+for (icon, val, lbl), col in zip(primary, st.columns(3)):
     col.markdown(
         f"<div class='kpi-card primary'>"
         f"  <div class='kpi-icon'>{icon}</div>"
@@ -135,8 +151,7 @@ secondary = [
     ("🔄", f"{churn_rate:.1%}",   "Taux de churn"),
     ("⚠️", f"{low_stock}",        "Stock critique")
 ]
-cols2 = st.columns(4)
-for (icon, val, lbl), col in zip(secondary, cols2):
+for (icon, val, lbl), col in zip(secondary, st.columns(4)):
     col.markdown(
         f"<div class='kpi-card secondary'>"
         f"  <div class='kpi-icon'>{icon}</div>"
@@ -154,10 +169,13 @@ with c1:
     chart_type = (
         alt.Chart(df_type)
         .mark_bar(color="#69b3a2")
-        .encode(alt.X("Type:N", sort="-y", title=None),
-                alt.Y("Count:Q", title="Nombre de montures"),
-                tooltip=["Type","Count"])
-        .properties(height=350).interactive()
+        .encode(
+            alt.X("Type:N", sort="-y", title=None),
+            alt.Y("Count:Q", title="Nombre de montures"),
+            tooltip=["Type","Count"]
+        )
+        .properties(height=350)
+        .interactive()
     )
     st.altair_chart(chart_type, use_container_width=True)
 
@@ -167,10 +185,13 @@ with c2:
     chart_forme = (
         alt.Chart(df_forme)
         .mark_bar(color="#4c78a8")
-        .encode(alt.X("Forme:N", sort="-y", title=None),
-                alt.Y("Count:Q", title="Nombre de montures"),
-                tooltip=["Forme","Count"])
-        .properties(height=350).interactive()
+        .encode(
+            alt.X("Forme:N", sort="-y", title=None),
+            alt.Y("Count:Q", title="Nombre de montures"),
+            tooltip=["Forme","Count"]
+        )
+        .properties(height=350)
+        .interactive()
     )
     st.altair_chart(chart_forme, use_container_width=True)
 
@@ -182,9 +203,15 @@ for col in features:
     df_feat[col] = le.fit_transform(df_feat[col].astype(str))
 X_content = csr_matrix(pd.get_dummies(df_feat[features]))
 
-pivot = commandes.pivot_table(index="Client_ID", columns="Monture_ID", aggfunc="size", fill_value=0)
+pivot = commandes.pivot_table(
+    index="Client_ID",
+    columns="Monture_ID",
+    aggfunc="size",
+    fill_value=0
+)
 mat = csr_matrix(pivot.values.astype(float))
-U,S,Vt = svds(mat, k=min(20, min(mat.shape)-1)); S=np.diag(S)
+U,S,Vt = svds(mat, k=min(20, min(mat.shape)-1))
+S = np.diag(S)
 knn = NearestNeighbors(metric="cosine", algorithm="brute").fit(mat)
 
 def rec_contenu(last_mid, n=5):
@@ -219,6 +246,7 @@ methods = [
 # ————————————————— Display recommendations ——————————————————————————————
 st.markdown(f"## 🎯 Recommandations pour **{client_id}**")
 cols = st.columns(len(methods))
+
 for (title, func, desc), col in zip(methods, cols):
     with col:
         st.markdown(f"**{title}**  \n*{desc}*")
@@ -229,11 +257,12 @@ for (title, func, desc), col in zip(methods, cols):
             recs = func(client_id, 5, 5)
         else:
             recs = func(client_id, 5)
+
         if not recs:
             st.info("— Pas assez de données —")
             continue
 
-        # ▶ Correction: on ne prend la dernière valeur que si la série n'est pas vide
+        # Forecast safe
         forecasts = {}
         for mid in recs:
             s = forecast_sales(mid, commandes, 1)
