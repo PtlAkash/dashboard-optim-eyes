@@ -4,4 +4,6 @@ numpy
 altair
 scipy
 scikit-learn
-Pillow
+pillow
+pyarrow
+s3fs
