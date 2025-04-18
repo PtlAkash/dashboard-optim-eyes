@@ -7,3 +7,4 @@ scikit-learn
 pillow
 pyarrow
 s3fs
+boto3
