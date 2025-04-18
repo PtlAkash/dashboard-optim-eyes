@@ -33,12 +33,16 @@ st.sidebar.header("🔍 Sélection client")
 # ————————————————— Data Loading (Parquet S3) —————————————————————————————————
 @st.cache_data(show_spinner=False)
 def load_data():
-    bucket = "s3://optim-eyes-data"
-    clients   = pd.read_parquet(f"{bucket}/clients.parquet")
-    commandes = pd.read_parquet(f"{bucket}/commandes.parquet")
-    produits  = pd.read_parquet(f"{bucket}/produits_montures.parquet")
+    # on récupère le nom du bucket depuis les Secrets (TOML)
+    bucket = st.secrets["S3_BUCKET"]
+    base   = f"s3://{bucket}"
 
-    # conversion dates
+    # lecture Parquet depuis S3
+    clients   = pd.read_parquet(f"{base}/clients.parquet")
+    commandes = pd.read_parquet(f"{base}/commandes.parquet")
+    produits  = pd.read_parquet(f"{base}/produits_montures.parquet")
+
+    # conversion date
     commandes['Date_Commande'] = pd.to_datetime(
         commandes['Date_Commande'], errors='coerce'
     )
